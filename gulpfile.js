@@ -7,7 +7,8 @@ var less = require('gulp-less');
 var header = require('gulp-header');
 var tap = require('gulp-tap');
 var nano = require('gulp-cssnano');
-var autoprefixer = require('gulp-autoprefixer');
+var postcss = require('gulp-postcss');
+var autoprefixer = require('autoprefixer');
 var rename = require('gulp-rename');
 var sourcemaps = require('gulp-sourcemaps');
 var browserSync = require('browser-sync');
@@ -16,23 +17,57 @@ var pkg = require('./package.json');
 var option = {base: 'src'};
 var dist = __dirname + '/dist';
 
-gulp.task('source', function(){
-    gulp.src('src/example/**/*.!(less|html)', option)
+gulp.task('build:style', function (){
+    var banner = [
+        '/*!',
+        ' * WeUI v<%= pkg.version %> (<%= pkg.homepage %>)',
+        ' * Copyright <%= new Date().getFullYear() %> Tencent, Inc.',
+        ' * Licensed under the <%= pkg.license %> license',
+        ' */',
+        ''].join('\n');
+    gulp.src('src/style/weui.less', option)
+        .pipe(sourcemaps.init())
+        .pipe(less().on('error', function (e) {
+            console.error(e.message);
+            this.emit('end');
+        }))
+        .pipe(postcss([autoprefixer(['iOS >= 7', 'Android >= 4.1'])]))
+        .pipe(header(banner, { pkg : pkg } ))
+        .pipe(sourcemaps.write())
+        .pipe(gulp.dest(dist))
+        .pipe(browserSync.reload({stream: true}))
+        .pipe(nano({
+            zindex: false,
+            autoprefixer: false
+        }))
+        .pipe(rename(function (path) {
+            path.basename += '.min';
+        }))
+        .pipe(gulp.dest(dist));
+});
+
+gulp.task('build:example:assets', function (){
+    gulp.src('src/example/**/*.?(png|jpg|gif|js)', option)
         .pipe(gulp.dest(dist))
         .pipe(browserSync.reload({stream: true}));
 });
 
-gulp.task('styles', ['source'], function () {
+gulp.task('build:example:style', function (){
     gulp.src('src/example/example.less', option)
         .pipe(less().on('error', function (e){
             console.error(e.message);
             this.emit('end');
         }))
-        .pipe(autoprefixer())
-        .pipe(nano())
+        .pipe(postcss([autoprefixer(['iOS >= 7', 'Android >= 4.1'])]))
+        .pipe(nano({
+            zindex: false,
+            autoprefixer: false
+        }))
         .pipe(gulp.dest(dist))
         .pipe(browserSync.reload({stream: true}));
+});
 
+gulp.task('build:example:html', function (){
     gulp.src('src/example/index.html', option)
         .pipe(tap(function (file){
             var dir = path.dirname(file.path);
@@ -47,39 +82,17 @@ gulp.task('styles', ['source'], function () {
         }))
         .pipe(gulp.dest(dist))
         .pipe(browserSync.reload({stream: true}));
-
-    var banner = [
-        '/*!',
-        ' * WeUI v<%= pkg.version %> (<%= pkg.homepage %>)',
-        ' * Copyright <%= new Date().getFullYear() %> Tencent, Inc.',
-        ' * Licensed under the <%= pkg.license %> license',
-        ' */',
-        ''].join('\n');
-    gulp.src('src/style/weui.less', option)
-        .pipe(sourcemaps.init())
-        .pipe(less().on('error', function (e) {
-            console.error(e.message);
-            this.emit('end');
-        }))
-        .pipe(sourcemaps.write())
-        .pipe(autoprefixer())
-        .pipe(header(banner, { pkg : pkg } ))
-        .pipe(gulp.dest(dist))
-        .pipe(nano())
-        .pipe(rename(function (path) {
-            path.basename += '.min';
-        }))
-        .pipe(gulp.dest(dist))
-        .pipe(browserSync.reload({stream: true}));
 });
 
-gulp.task('release', ['styles']);
+gulp.task('build:example', ['build:example:assets', 'build:example:style', 'build:example:html']);
 
-gulp.task('watch', function () {
-    gulp.watch('src/**/*.less', ['styles']);
-    gulp.watch('src/example/**/*.{html,js}', ['source'], function () {
-        browserSync.reload();
-    });
+gulp.task('release', ['build:style', 'build:example']);
+
+gulp.task('watch', ['release'], function () {
+    gulp.watch('src/style/**/*', ['build:style']);
+    gulp.watch('src/example/example.less', ['build:example:style']);
+    gulp.watch('src/example/**/*.?(png|jpg|gif|js)', ['build:example:assets']);
+    gulp.watch('src/**/*.html', ['build:example:html']);
 });
 
 gulp.task('server', function () {
@@ -98,7 +111,6 @@ gulp.task('server', function () {
         startPath: '/example'
     });
 });
-
 
 // 参数说明
 //  -w: 实时监听
